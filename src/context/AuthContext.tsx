@@ -1,170 +1,144 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { User, UserRole, AuthContextType } from '../types';
-import { users } from '../data/users';
 import toast from 'react-hot-toast';
+import api from '../api/axiosConfig';
 
 // Create Auth Context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Local storage keys
 const USER_STORAGE_KEY = 'business_nexus_user';
-const RESET_TOKEN_KEY = 'business_nexus_reset_token';
+const ACCESS_TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
 
 // Auth Provider Component
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const mapBackendUserToFrontend = (data: any): User => {
+    // If data comes from profile endpoint, user info is nested under 'user'
+    const userInfo = data.user || data;
+    return {
+      id: String(userInfo.id),
+      name: userInfo.username,
+      email: userInfo.email,
+      role: userInfo.role as UserRole,
+      avatarUrl: userInfo.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.username)}&background=random`,
+      bio: userInfo.bio || '',
+      isOnline: userInfo.isOnline || false,
+      createdAt: userInfo.date_joined || new Date().toISOString()
+    };
+  };
+
+  // Fetch current user from API if token exists
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await api.get('/accounts/profile/');
+      const mappedUser = mapBackendUserToFrontend(response.data);
+      setUser(mappedUser);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+      logout();
+    }
+  };
+
   // Check for stored user on initial load
   useEffect(() => {
+    const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-    if (storedUser) {
+    
+    if (storedToken && storedUser) {
       setUser(JSON.parse(storedUser));
+      fetchCurrentUser();
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
-  // Mock login function - in a real app, this would make an API call
   const login = async (email: string, password: string, role: UserRole): Promise<void> => {
     setIsLoading(true);
-    
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Backend expects username by default, we'll send email as username
+      const response = await api.post('/accounts/login/', { username: email, password });
       
-      // Find user with matching email and role
-      const foundUser = users.find(u => u.email === email && u.role === role);
+      const { access, refresh } = response.data;
+      localStorage.setItem(ACCESS_TOKEN_KEY, access);
+      localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
       
-      if (foundUser) {
-        setUser(foundUser);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(foundUser));
-        toast.success('Successfully logged in!');
-      } else {
-        throw new Error('Invalid credentials or user not found');
-      }
-    } catch (error) {
-      toast.error((error as Error).message);
+      // Fetch user profile after successful login
+      const profileResponse = await api.get('/accounts/profile/');
+      const userData = mapBackendUserToFrontend(profileResponse.data);
+      
+      setUser(userData);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+      toast.success('Successfully logged in!');
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || 'Invalid credentials or server error';
+      toast.error(msg);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Mock register function - in a real app, this would make an API call
   const register = async (name: string, email: string, password: string, role: UserRole): Promise<void> => {
     setIsLoading(true);
-    
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Using email as username to ensure uniqueness and match login logic
+      await api.post('/accounts/register/', { 
+        username: email,
+        email: email,
+        password: password,
+        role: role
+      });
       
-      // Check if email already exists
-      if (users.some(u => u.email === email)) {
-        throw new Error('Email already in use');
-      }
-      
-      // Create new user
-      const newUser: User = {
-        id: `${role[0]}${users.length + 1}`,
-        name,
-        email,
-        role,
-        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-        bio: '',
-        isOnline: true,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Add user to mock data
-      users.push(newUser);
-      
-      setUser(newUser);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+      // Auto login after registration
+      await login(email, password, role);
       toast.success('Account created successfully!');
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (error: any) {
+      const msg = error.response?.data?.username?.[0] || error.response?.data?.email?.[0] || 'Registration failed';
+      toast.error(msg);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Mock forgot password function
   const forgotPassword = async (email: string): Promise<void> => {
-    try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user exists
-      const user = users.find(u => u.email === email);
-      if (!user) {
-        throw new Error('No account found with this email');
-      }
-      
-      // Generate reset token (in a real app, this would be a secure token)
-      const resetToken = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem(RESET_TOKEN_KEY, resetToken);
-      
-      // In a real app, this would send an email
-      toast.success('Password reset instructions sent to your email');
-    } catch (error) {
-      toast.error((error as Error).message);
-      throw error;
-    }
+    toast.error("Forgot password not implemented in backend yet");
   };
 
-  // Mock reset password function
   const resetPassword = async (token: string, newPassword: string): Promise<void> => {
-    try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify token
-      const storedToken = localStorage.getItem(RESET_TOKEN_KEY);
-      if (token !== storedToken) {
-        throw new Error('Invalid or expired reset token');
-      }
-      
-      // In a real app, this would update the user's password in the database
-      localStorage.removeItem(RESET_TOKEN_KEY);
-      toast.success('Password reset successfully');
-    } catch (error) {
-      toast.error((error as Error).message);
-      throw error;
-    }
+    toast.error("Reset password not implemented in backend yet");
   };
 
-  // Logout function
   const logout = (): void => {
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
     toast.success('Logged out successfully');
   };
 
-  // Update user profile
   const updateProfile = async (userId: string, updates: Partial<User>): Promise<void> => {
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!user) throw new Error("Not logged in");
       
-      // Update user in mock data
-      const userIndex = users.findIndex(u => u.id === userId);
-      if (userIndex === -1) {
-        throw new Error('User not found');
-      }
+      // We only update the basic User fields via the backend's CustomUser update capability if needed,
+      // Or we can patch the specific profile. Since we don't have a direct /update/ endpoint for CustomUser,
+      // we'll patch the profile.
+      const endpoint = user.role === 'entrepreneur' ? '/accounts/profile/entrepreneur/' : '/accounts/profile/investor/';
       
-      const updatedUser = { ...users[userIndex], ...updates };
-      users[userIndex] = updatedUser;
+      // Assuming updates contains profile specific fields. 
+      await api.patch(endpoint, updates);
       
-      // Update current user if it's the same user
-      if (user?.id === userId) {
-        setUser(updatedUser);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-      }
-      
+      // Re-fetch user profile to sync state
+      await fetchCurrentUser();
       toast.success('Profile updated successfully');
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to update profile');
       throw error;
     }
   };
@@ -184,7 +158,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom hook for using auth context
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

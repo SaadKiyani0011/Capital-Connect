@@ -10,11 +10,24 @@ import { useAuth } from '../../context/AuthContext';
 import { Entrepreneur } from '../../types';
 import { entrepreneurs } from '../../data/users';
 import { getRequestsFromInvestor } from '../../data/collaborationRequests';
+import api from '../../api/axiosConfig';
 
 export const InvestorDashboard: React.FC = () => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
+  const [analytics, setAnalytics] = useState({
+    meetings: { total: 0, pending: 0, upcoming: 0 },
+    documents: { total: 0, signed: 0 }
+  });
+
+  React.useEffect(() => {
+    if (user) {
+      api.get('/analytics/dashboard/')
+        .then(res => setAnalytics(res.data))
+        .catch(err => console.error('Failed to load analytics', err));
+    }
+  }, [user]);
   
   if (!user) return null;
   
@@ -139,7 +152,7 @@ export const InvestorDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-accent-700">Your Connections</p>
                 <h3 className="text-xl font-semibold text-accent-900">
-                  {sentRequests.filter(req => req.status === 'accepted').length}
+                  {analytics.meetings.total}
                 </h3>
               </div>
             </div>

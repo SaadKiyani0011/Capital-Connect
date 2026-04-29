@@ -10,17 +10,27 @@ import { useAuth } from '../../context/AuthContext';
 import { CollaborationRequest } from '../../types';
 import { getRequestsForEntrepreneur } from '../../data/collaborationRequests';
 import { investors } from '../../data/users';
+import api from '../../api/axiosConfig';
 
 export const EntrepreneurDashboard: React.FC = () => {
   const { user } = useAuth();
   const [collaborationRequests, setCollaborationRequests] = useState<CollaborationRequest[]>([]);
   const [recommendedInvestors, setRecommendedInvestors] = useState(investors.slice(0, 3));
+  const [analytics, setAnalytics] = useState({
+    meetings: { total: 0, pending: 0, upcoming: 0 },
+    documents: { total: 0, signed: 0 }
+  });
   
   useEffect(() => {
     if (user) {
       // Load collaboration requests
       const requests = getRequestsForEntrepreneur(user.id);
       setCollaborationRequests(requests);
+
+      // Fetch real analytics from Django
+      api.get('/analytics/dashboard/')
+        .then(res => setAnalytics(res.data))
+        .catch(err => console.error('Failed to load analytics', err));
     }
   }, [user]);
   
@@ -63,7 +73,7 @@ export const EntrepreneurDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-primary-700">Pending Requests</p>
-                <h3 className="text-xl font-semibold text-primary-900">{pendingRequests.length}</h3>
+                <h3 className="text-xl font-semibold text-primary-900">{analytics.meetings.pending}</h3>
               </div>
             </div>
           </CardBody>
@@ -78,7 +88,7 @@ export const EntrepreneurDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-secondary-700">Total Connections</p>
                 <h3 className="text-xl font-semibold text-secondary-900">
-                  {collaborationRequests.filter(req => req.status === 'accepted').length}
+                  {analytics.meetings.total}
                 </h3>
               </div>
             </div>
@@ -93,7 +103,7 @@ export const EntrepreneurDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-accent-700">Upcoming Meetings</p>
-                <h3 className="text-xl font-semibold text-accent-900">2</h3>
+                <h3 className="text-xl font-semibold text-accent-900">{analytics.meetings.upcoming}</h3>
               </div>
             </div>
           </CardBody>
@@ -106,8 +116,8 @@ export const EntrepreneurDashboard: React.FC = () => {
                 <TrendingUp size={20} className="text-success-700" />
               </div>
               <div>
-                <p className="text-sm font-medium text-success-700">Profile Views</p>
-                <h3 className="text-xl font-semibold text-success-900">24</h3>
+                <p className="text-sm font-medium text-success-700">Total Documents</p>
+                <h3 className="text-xl font-semibold text-success-900">{analytics.documents.total}</h3>
               </div>
             </div>
           </CardBody>
